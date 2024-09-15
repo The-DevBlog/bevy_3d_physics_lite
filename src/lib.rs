@@ -22,41 +22,64 @@ impl Default for Damping {
 
 #[derive(Component)]
 pub struct Collider {
-    pub half_extents: Vec3, // Half the size of the cube along each axis
+    cuboid: Vec3,
 }
 
 impl Collider {
-    pub fn new(half_extents: Vec3) -> Self {
+    pub fn cuboid(x: f32, y: f32, z: f32) -> Self {
         Self {
-            half_extents: Vec3::new(
-                half_extents.x / 2.0,
-                half_extents.y / 2.0,
-                half_extents.z / 2.0,
-            ),
+            cuboid: Vec3::new(x / 2.0, y / 2.0, z / 2.0),
         }
     }
 }
 
-fn check_aabb_collision(pos_a: Vec3, extents_a: Vec3, pos_b: Vec3, extents_b: Vec3) -> bool {
-    (pos_a.x - pos_b.x).abs() <= (extents_a.x + extents_b.x)
-        && (pos_a.y - pos_b.y).abs() <= (extents_a.y + extents_b.y)
-        && (pos_a.z - pos_b.z).abs() <= (extents_a.z + extents_b.z)
+struct CollisionData {
+    position: Vec3,
+    velocity: Vec3,
+    collider: Vec3,
 }
 
-fn resolve_aabb_collision(
-    pos_a: &mut Vec3,
-    vel_a: &mut Vec3,
-    extents_a: Vec3,
-    pos_b: &mut Vec3,
-    vel_b: &mut Vec3,
-    extents_b: Vec3,
-) {
-    let diff = *pos_a - *pos_b;
+impl CollisionData {
+    fn new(position: Vec3, velocity: Vec3, collider: Vec3) -> Self {
+        Self {
+            position,
+            velocity,
+            collider,
+        }
+    }
+
+    fn update_transform(&self, transform: &mut Transform) {
+        transform.translation = self.position;
+    }
+
+    fn update_velocity(&self, velocity: &mut Velocity) {
+        velocity.0 = self.velocity;
+    }
+
+    fn apply_velocity(&mut self, delta_time: f32) {
+        self.position += self.velocity * delta_time;
+    }
+
+    fn apply_damping(&mut self, damping: f32) {
+        self.velocity *= 1.0 - damping;
+    }
+}
+
+// Check if two AABBs (Axis-Aligned Bounding Boxes) are colliding
+fn check_aabb_collision(a: &CollisionData, b: &CollisionData) -> bool {
+    (a.position.x - b.position.x).abs() <= (a.collider.x + b.collider.x)
+        && (a.position.y - b.position.y).abs() <= (a.collider.y + b.collider.y)
+        && (a.position.z - b.position.z).abs() <= (a.collider.z + b.collider.z)
+}
+
+// Resolve the collision between two entities by adjusting their positions and velocities
+fn resolve_aabb_collision(a: &mut CollisionData, b: &mut CollisionData) {
+    let diff = a.position - b.position;
 
     // Calculate overlap along each axis
-    let overlap_x = (extents_a.x + extents_b.x) - diff.x.abs();
-    let overlap_y = (extents_a.y + extents_b.y) - diff.y.abs();
-    let overlap_z = (extents_a.z + extents_b.z) - diff.z.abs();
+    let overlap_x = (a.collider.x + b.collider.x) - diff.x.abs();
+    let overlap_y = (a.collider.y + b.collider.y) - diff.y.abs();
+    let overlap_z = (a.collider.z + b.collider.z) - diff.z.abs();
 
     // Find the axis with the least penetration
     let mut axis = Vec3::ZERO;
@@ -74,23 +97,21 @@ fn resolve_aabb_collision(
     }
 
     // Move objects apart along the axis of least penetration
-    *pos_a += axis * min_overlap * 0.5;
-    *pos_b -= axis * min_overlap * 0.5;
+    a.position += axis * min_overlap * 0.5;
+    b.position -= axis * min_overlap * 0.5;
 
     // Reflect velocities (simple elastic collision)
-    let relative_velocity = *vel_a - *vel_b;
+    let relative_velocity = a.velocity - b.velocity;
     let velocity_along_axis = relative_velocity.dot(axis);
 
-    // Only resolve if objects are moving toward each other
-    if velocity_along_axis < 0.0 {
-        let restitution = 0.8; // Coefficient of restitution (bounciness)
-        let impulse = -(1.0 + restitution) * velocity_along_axis / 2.0;
+    let restitution = 0.8; // Coefficient of restitution (bounciness)
+    let impulse = -(1.0 + restitution) * velocity_along_axis / 2.0;
 
-        *vel_a += impulse * axis;
-        *vel_b -= impulse * axis;
-    }
+    a.velocity += impulse * axis;
+    b.velocity -= impulse * axis;
 }
 
+// The main update system for applying physics, including collision detection and resolution
 fn update_physics(
     time: Res<Time>,
     mut query: Query<(&mut Transform, &mut Velocity, &Damping, &Collider)>,
@@ -101,30 +122,27 @@ fn update_physics(
         [(mut transform_a, mut velocity_a, damping_a, collider_a), (mut transform_b, mut velocity_b, damping_b, collider_b)],
     ) = entities.fetch_next()
     {
-        // Apply damping
-        velocity_a.0 *= 1.0 - damping_a.0;
-        velocity_b.0 *= 1.0 - damping_b.0;
+        // Create CollisionData instances for both entities being evaluated
+        let mut ent_a =
+            CollisionData::new(transform_a.translation, velocity_a.0, collider_a.cuboid);
+        let mut ent_b =
+            CollisionData::new(transform_b.translation, velocity_b.0, collider_b.cuboid);
 
-        // Check for AABB collisions
-        if check_aabb_collision(
-            transform_a.translation,
-            collider_a.half_extents,
-            transform_b.translation,
-            collider_b.half_extents,
-        ) {
-            // Resolve the collision
-            resolve_aabb_collision(
-                &mut transform_a.translation,
-                &mut velocity_a.0,
-                collider_a.half_extents,
-                &mut transform_b.translation,
-                &mut velocity_b.0,
-                collider_b.half_extents,
-            );
+        ent_a.apply_damping(damping_a.0);
+        ent_b.apply_damping(damping_b.0);
+
+        ent_a.apply_velocity(time.delta_seconds());
+        ent_b.apply_velocity(time.delta_seconds());
+
+        // Check and resolve collisions if they collide
+        if check_aabb_collision(&ent_a, &ent_b) {
+            resolve_aabb_collision(&mut ent_a, &mut ent_b);
         }
 
-        // Update positions based on new velocities
-        transform_a.translation += velocity_a.0 * time.delta_seconds();
-        transform_b.translation += velocity_b.0 * time.delta_seconds();
+        ent_a.update_transform(&mut transform_a);
+        ent_b.update_transform(&mut transform_b);
+
+        ent_a.update_velocity(&mut velocity_a);
+        ent_b.update_velocity(&mut velocity_b);
     }
 }
