@@ -4,7 +4,7 @@ pub struct Bevy3dPhysicsLitePlugin;
 
 impl Plugin for Bevy3dPhysicsLitePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (collisions, apply_physics));
+        app.add_systems(Update, (apply_physics, collisions).chain()); // applying physics before collision resolution is more accurate
     }
 }
 
@@ -49,8 +49,8 @@ pub struct Collider {
 }
 
 impl Collider {
-    pub fn apply_velocity(&mut self, velocity: Vec3) {
-        self.velocity.0 += velocity;
+    pub fn apply_velocity(&mut self, position: &mut Vec3, delta_time: f32) {
+        *position += self.velocity.0 * self.speed.0 * delta_time;
     }
 
     fn apply_damping(&mut self) {
@@ -58,25 +58,37 @@ impl Collider {
     }
 
     fn apply_gravity(&mut self, position: &mut Vec3, delta_time: f32) {
-        *position -= self.gravity.0 * delta_time;
+        if !self.fixed {
+            position.y -= self.gravity.0 * delta_time;
+        }
     }
 }
 
 // Check if two AABBs (Axis-Aligned Bounding Boxes) are colliding
-fn check_aabb_collision(a: &Vec3, b: &Vec3) -> bool {
-    (a.x - b.x).abs() <= (a.x + b.x)
-        && (a.y - b.y).abs() <= (a.y + b.y)
-        && (a.z - b.z).abs() <= (a.z + b.z)
+fn check_aabb_collision(cuboid_a: &Vec3, cuboid_b: &Vec3, pos_a: &Vec3, pos_b: &Vec3) -> bool {
+    let cuboid_a = *cuboid_a / 2.0;
+    let cuboid_b = *cuboid_b / 2.0;
+
+    (pos_a.x - pos_b.x).abs() <= (cuboid_a.x + cuboid_b.x)
+        && (pos_a.y - pos_b.y).abs() <= (cuboid_a.y + cuboid_b.y)
+        && (pos_a.z - pos_b.z).abs() <= (cuboid_a.z + cuboid_b.z)
 }
 
 // Resolve the collision between two entities by adjusting their positions and velocities
-fn resolve_aabb_collision(a: &mut Collider, b: &mut Collider, pos_a: &mut Vec3, pos_b: &mut Vec3) {
+fn resolve_aabb_collision(
+    collider_a: &mut Collider,
+    collider_b: &mut Collider,
+    pos_a: &mut Vec3,
+    pos_b: &mut Vec3,
+) {
     let diff = *pos_a - *pos_b;
 
     // Calculate overlap along each axis
-    let overlap_x = (a.cuboid.x + b.cuboid.x) - diff.x.abs();
-    let overlap_y = (a.cuboid.y + b.cuboid.y) - diff.y.abs();
-    let overlap_z = (a.cuboid.z + b.cuboid.z) - diff.z.abs();
+    let cuboid_a = collider_a.cuboid / 2.0;
+    let cuboid_b = collider_b.cuboid / 2.0;
+    let overlap_x = (cuboid_a.x + cuboid_b.x) - diff.x.abs();
+    let overlap_y = (cuboid_a.y + cuboid_b.y) - diff.y.abs();
+    let overlap_z = (cuboid_a.z + cuboid_b.z) - diff.z.abs();
 
     // Find the axis with the least penetration
     let mut axis = Vec3::ZERO;
@@ -94,31 +106,31 @@ fn resolve_aabb_collision(a: &mut Collider, b: &mut Collider, pos_a: &mut Vec3, 
     }
 
     // Move objects apart along the axis of least penetration
-    if !a.fixed {
+    if !collider_a.fixed {
         *pos_a += axis * min_overlap * 0.5;
     }
 
-    if !b.fixed {
+    if !collider_b.fixed {
         *pos_b -= axis * min_overlap * 0.5;
     }
 
     // Reflect velocities (simple elastic collision)
-    let relative_velocity = a.velocity.0 - b.velocity.0;
+    let relative_velocity = collider_a.velocity.0 - collider_b.velocity.0;
     let velocity_along_axis = relative_velocity.dot(axis);
 
     let restitution = 0.8; // Coefficient of restitution (bounciness)
     let impulse = -(1.0 + restitution) * velocity_along_axis / 2.0;
 
-    if !a.fixed {
-        a.velocity.0 += impulse * axis;
+    if !collider_a.fixed {
+        collider_a.velocity.0 += impulse * axis;
     }
 
-    if !b.fixed {
-        b.velocity.0 -= impulse * axis;
+    if !collider_b.fixed {
+        collider_b.velocity.0 -= impulse * axis;
     }
 }
 
-// The main update system for applying collisions
+// main update system for applying collisions
 fn collisions(mut query: Query<(&mut Collider, &mut Transform), With<Collider>>) {
     let mut entities = query.iter_combinations_mut();
 
@@ -126,8 +138,12 @@ fn collisions(mut query: Query<(&mut Collider, &mut Transform), With<Collider>>)
         entities.fetch_next()
     {
         // Check and resolve collisions if they collide
-        if check_aabb_collision(&transform_a.translation, &transform_b.translation) {
-            println!("Collision Detected!!!");
+        if check_aabb_collision(
+            &collider_a.cuboid,
+            &collider_b.cuboid,
+            &transform_a.translation,
+            &transform_b.translation,
+        ) {
             resolve_aabb_collision(
                 &mut collider_a,
                 &mut collider_b,
@@ -135,26 +151,15 @@ fn collisions(mut query: Query<(&mut Collider, &mut Transform), With<Collider>>)
                 &mut transform_b.translation,
             );
         }
-
-        // ent_a.update_transform(&mut transform_a);
-        // ent_b.update_transform(&mut transform_b);
-
-        // ent_a.update_velocity(&mut velocity_a);
-        // ent_b.update_velocity(&mut velocity_b);
     }
 }
 
 // main system for applying physics
 fn apply_physics(mut query: Query<(&mut Collider, &mut Transform)>, time: Res<Time>) {
     for (mut collider, mut transform) in query.iter_mut() {
-        // add velocity
-        transform.translation += collider.velocity.0 * collider.speed.0 * time.delta_seconds();
-
-        // add damping
-        let damping = collider.damping.0;
-        collider.velocity.0 *= 1.0 - damping;
-
-        // add gravity
-        transform.translation.y -= collider.gravity.0 * time.delta_seconds();
+        // apply damping BEFORE velocity
+        collider.apply_damping();
+        collider.apply_velocity(&mut transform.translation, time.delta_seconds());
+        collider.apply_gravity(&mut transform.translation, time.delta_seconds());
     }
 }
