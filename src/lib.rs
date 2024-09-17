@@ -55,6 +55,11 @@ impl Default for ColliderColor {
     }
 }
 
+pub enum ColliderType {
+    Cuboid(Vec3),
+    Cylinder { height: f32, radius: f32 },
+}
+
 #[derive(Component, Default)]
 pub struct Collider {
     pub cuboid: Vec3,
