@@ -14,6 +14,9 @@ impl Plugin for Bevy3dPhysicsLitePlugin {
 }
 
 #[derive(Component)]
+pub struct MapBase;
+
+#[derive(Component)]
 pub struct Gravity(pub f32);
 
 impl Default for Gravity {
@@ -55,7 +58,6 @@ impl Default for ColliderColor {
 #[derive(Component, Default)]
 pub struct Collider {
     pub cuboid: Vec3,
-    pub color: Srgba,
     pub damping: Damping,
     pub fixed: bool,
     pub gravity: Gravity,
@@ -79,3 +81,6 @@ impl Collider {
         }
     }
 }
+
+#[derive(Component)]
+pub struct ColliderLines;

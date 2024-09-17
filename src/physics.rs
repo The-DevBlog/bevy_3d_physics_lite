@@ -75,24 +75,28 @@ fn resolve_aabb_collision(
     }
 }
 
-// main update system for applying collisions
-fn collisions(mut query: Query<(&mut Collider, &mut Transform), With<Collider>>) {
-    let mut entities = query.iter_combinations_mut();
+// main update system for applying
+fn collisions(mut query: Query<(&mut Collider, &mut Transform, Option<&MapBase>), With<Collider>>) {
+    for (mut collider, _, _) in query.iter_mut() {
+        collider.is_colliding = false;
+    }
 
-    while let Some([(mut collider_a, mut transform_a), (mut collider_b, mut transform_b)]) =
-        entities.fetch_next()
+    let mut entities = query.iter_combinations_mut();
+    while let Some(
+        [(mut collider_a, mut transform_a, mapbase_a), (mut collider_b, mut transform_b, mapbase_b)],
+    ) = entities.fetch_next()
     {
         // Check and resolve collisions if they collide
-        collider_a.is_colliding = false;
-        collider_b.is_colliding = false;
         if check_aabb_collision(
             &collider_a.cuboid,
             &collider_b.cuboid,
             &transform_a.translation,
             &transform_b.translation,
         ) {
-            collider_a.is_colliding = true;
-            collider_b.is_colliding = true;
+            if mapbase_a.is_none() && mapbase_b.is_none() {
+                collider_a.is_colliding = true;
+                collider_b.is_colliding = true;
+            }
 
             resolve_aabb_collision(
                 &mut collider_a,
@@ -107,8 +111,7 @@ fn collisions(mut query: Query<(&mut Collider, &mut Transform), With<Collider>>)
 // main system for applying physics
 fn apply_physics(mut query: Query<(&mut Collider, &mut Transform)>, time: Res<Time>) {
     for (mut collider, mut transform) in query.iter_mut() {
-        // apply damping BEFORE velocity
-        collider.apply_damping();
+        collider.apply_damping(); // apply damping BEFORE velocity
         collider.apply_velocity(&mut transform.translation, time.delta_seconds());
         collider.apply_gravity(&mut transform.translation, time.delta_seconds());
     }

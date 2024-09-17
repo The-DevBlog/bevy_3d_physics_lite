@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::Collider;
+use crate::*;
 
 pub struct ColliderLinesPlugin;
 
@@ -10,7 +10,7 @@ impl Plugin for ColliderLinesPlugin {
     }
 }
 
-fn lines(query: Query<(&Collider, &Transform), With<Collider>>, mut gizmos: Gizmos) {
+fn lines(query: Query<(&Collider, &Transform), With<ColliderLines>>, mut gizmos: Gizmos) {
     for (collider, transform) in query.iter() {
         let color = if collider.is_colliding {
             Srgba::RED
