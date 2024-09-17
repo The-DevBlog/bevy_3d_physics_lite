@@ -58,6 +58,10 @@ impl Default for ColliderColor {
 #[derive(Component, Default)]
 pub struct Collider {
     pub cuboid: Vec3,
+}
+
+#[derive(Component, Default)]
+pub struct RigidBody {
     pub damping: Damping,
     pub fixed: bool,
     pub gravity: Gravity,
@@ -66,7 +70,7 @@ pub struct Collider {
     pub is_colliding: bool,
 }
 
-impl Collider {
+impl RigidBody {
     fn apply_velocity(&mut self, position: &mut Vec3, delta_time: f32) {
         *position += self.velocity.0 * self.speed.0 * delta_time;
     }
