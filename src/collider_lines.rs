@@ -10,9 +10,12 @@ impl Plugin for ColliderLinesPlugin {
     }
 }
 
-fn lines(query: Query<(&Collider, &Transform), With<ColliderLines>>, mut gizmos: Gizmos) {
-    for (collider, transform) in query.iter() {
-        let color = if collider.is_colliding {
+fn lines(
+    query: Query<(&Collider, &RigidBody, &Transform), With<ColliderLines>>,
+    mut gizmos: Gizmos,
+) {
+    for (collider, rigid_body, transform) in query.iter() {
+        let color = if rigid_body.is_colliding {
             Srgba::RED
         } else {
             Srgba::GREEN
