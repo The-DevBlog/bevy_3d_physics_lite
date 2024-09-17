@@ -9,7 +9,7 @@ pub struct Bevy3dPhysicsLitePlugin;
 
 impl Plugin for Bevy3dPhysicsLitePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((PhysicsPlugin, ColliderLinesPlugin));
+        app.add_plugins((ColliderLinesPlugin, PhysicsPlugin));
     }
 }
 
@@ -55,14 +55,28 @@ impl Default for ColliderColor {
     }
 }
 
-pub enum ColliderType {
+pub enum Shape {
     Cuboid(Vec3),
     Cylinder { height: f32, radius: f32 },
 }
 
-#[derive(Component, Default)]
+#[derive(Component)]
 pub struct Collider {
-    pub cuboid: Vec3,
+    pub shape: Shape,
+}
+
+impl Collider {
+    pub fn cuboid(x: f32, y: f32, z: f32) -> Self {
+        Self {
+            shape: Shape::Cuboid(Vec3::new(x, y, z)),
+        }
+    }
+
+    pub fn cylinder(height: f32, radius: f32) -> Self {
+        Self {
+            shape: Shape::Cylinder { height, radius },
+        }
+    }
 }
 
 #[derive(Component, Default)]

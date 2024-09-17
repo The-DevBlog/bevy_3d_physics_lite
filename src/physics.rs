@@ -9,6 +9,48 @@ impl Plugin for PhysicsPlugin {
     }
 }
 
+fn check_collision(
+    collider_a: &Collider,
+    collider_b: &Collider,
+    transform_a: &Vec3,
+    transform_b: &Vec3,
+) -> bool {
+    match (&collider_a.shape, &collider_b.shape) {
+        // Both colliders are cuboids, call the existing AABB collision function
+        (Shape::Cuboid(cuboid_a), Shape::Cuboid(cuboid_b)) => {
+            check_aabb_collision(cuboid_a, cuboid_b, transform_a, transform_b)
+        }
+        // You can add more cases to handle cylinder collisions, cuboid vs cylinder, etc.
+        // (
+        //     Shape::Cylinder {
+        //         width: width_a,
+        //         height: height_a,
+        //     },
+        //     Shape::Cylinder {
+        //         width: width_b,
+        //         height: height_b,
+        //     },
+        // ) => {
+        // Add cylinder collision handling here
+        // check_cylinder_collision(
+        //     *width_a,
+        //     *height_a,
+        //     transform_a,
+        //     *width_b,
+        //     *height_b,
+        //     transform_b,
+        // )
+        // }
+        // You may want to add more checks to handle cuboid vs cylinder
+        // (Shape::Cuboid(cuboid), Shape::Cylinder { width, height })
+        // | (Shape::Cylinder { width, height }, Shape::Cuboid(cuboid)) => {
+        //     // Handle cuboid vs cylinder collision
+        //     check_cuboid_cylinder_collision(cuboid, *width, *height, transform_a, transform_b)
+        // }
+        _ => false, // Default case if no valid collision check applies
+    }
+}
+
 // Check if two AABBs (Axis-Aligned Bounding Boxes) are colliding
 fn check_aabb_collision(cuboid_a: &Vec3, cuboid_b: &Vec3, pos_a: &Vec3, pos_b: &Vec3) -> bool {
     let cuboid_a = *cuboid_a / 2.0;
@@ -21,8 +63,8 @@ fn check_aabb_collision(cuboid_a: &Vec3, cuboid_b: &Vec3, pos_a: &Vec3, pos_b: &
 
 // Resolve the collision between two entities by adjusting their positions and velocities
 fn resolve_aabb_collision(
-    ent_a: (&mut Collider, &mut RigidBody, &mut Vec3),
-    ent_b: (&mut Collider, &mut RigidBody, &mut Vec3),
+    ent_a: (&mut Vec3, &mut RigidBody, &mut Vec3),
+    ent_b: (&mut Vec3, &mut RigidBody, &mut Vec3),
 ) {
     let (collider_a, rigid_body_a, pos_a) = ent_a;
     let (collider_b, rigid_body_b, pos_b) = ent_b;
@@ -30,8 +72,8 @@ fn resolve_aabb_collision(
     let diff = *pos_a - *pos_b;
 
     // Calculate overlap along each axis
-    let cuboid_a = collider_a.cuboid / 2.0;
-    let cuboid_b = collider_b.cuboid / 2.0;
+    let cuboid_a = *collider_a / 2.0;
+    let cuboid_b = *collider_b / 2.0;
     let overlap_x = (cuboid_a.x + cuboid_b.x) - diff.x.abs();
     let overlap_y = (cuboid_a.y + cuboid_b.y) - diff.y.abs();
     let overlap_z = (cuboid_a.z + cuboid_b.z) - diff.z.abs();
@@ -98,9 +140,16 @@ fn collisions(
     ) = entities.fetch_next()
     {
         // Check and resolve collisions if they collide
-        if check_aabb_collision(
-            &collider_a.cuboid,
-            &collider_b.cuboid,
+        // if check_aabb_collision(
+        //     &collider_a.cuboid,
+        //     &collider_b.cuboid,
+        //     &transform_a.translation,
+        //     &transform_b.translation,
+        // ) {
+
+        if check_collision(
+            &collider_a,
+            &collider_b,
             &transform_a.translation,
             &transform_b.translation,
         ) {
@@ -109,10 +158,16 @@ fn collisions(
                 rb_b.is_colliding = true;
             }
 
-            resolve_aabb_collision(
-                (&mut collider_a, &mut rb_a, &mut transform_a.translation),
-                (&mut collider_b, &mut rb_b, &mut transform_b.translation),
-            );
+            match (&collider_a.shape, &collider_b.shape) {
+                // Both colliders are cuboids, call the existing AABB collision function
+                (Shape::Cuboid(mut cuboid_a), Shape::Cuboid(mut cuboid_b)) => {
+                    resolve_aabb_collision(
+                        (&mut cuboid_a, &mut rb_a, &mut transform_a.translation),
+                        (&mut cuboid_b, &mut rb_b, &mut transform_b.translation),
+                    );
+                }
+                _ => (),
+            }
         }
     }
 }

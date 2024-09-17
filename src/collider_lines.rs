@@ -6,7 +6,7 @@ pub struct ColliderLinesPlugin;
 
 impl Plugin for ColliderLinesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, lines);
+        app.add_systems(PreUpdate, lines);
     }
 }
 
@@ -24,7 +24,7 @@ fn lines(
         gizmos.cuboid(
             Transform {
                 translation: transform.translation,
-                scale: collider.cuboid,
+                scale: Vec3::new(1.0, 1.0, 1.0),
                 ..default()
             },
             color,
