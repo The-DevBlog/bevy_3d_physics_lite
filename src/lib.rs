@@ -68,10 +68,12 @@ pub struct RigidBody {
     pub speed: Speed,
     pub velocity: Velocity,
     pub is_colliding: bool,
+    pub angular_velocity: Vec3,  // New: Angular velocity
+    pub moment_of_inertia: Vec3, // New: Moment of inertia (for rotations)
 }
 
 impl RigidBody {
-    fn apply_velocity(&mut self, position: &mut Vec3, delta_time: f32) {
+    fn apply_linear_velocity(&mut self, position: &mut Vec3, delta_time: f32) {
         *position += self.velocity.0 * self.speed.0 * delta_time;
     }
 
@@ -83,6 +85,13 @@ impl RigidBody {
         if !self.fixed {
             position.y -= self.gravity.0 * delta_time;
         }
+    }
+
+    fn apply_angular_velocity(&mut self, rotation: &mut Quat, delta_time: f32) {
+        let angular_displacement = self.angular_velocity * delta_time;
+        *rotation = rotation.mul_quat(Quat::from_rotation_x(angular_displacement.x));
+        *rotation = rotation.mul_quat(Quat::from_rotation_y(angular_displacement.y));
+        *rotation = rotation.mul_quat(Quat::from_rotation_z(angular_displacement.z));
     }
 }
 
