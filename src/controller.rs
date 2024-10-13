@@ -37,11 +37,21 @@ fn movement(
             direction.z -= 1.0;
         }
 
+        // rotate left
+        if keys.pressed(KeyCode::KeyQ) {
+            rigid_body.angular_velocity.y += 1.0;
+        }
+
+        // rotate right
+        if keys.pressed(KeyCode::KeyE) {
+            rigid_body.angular_velocity.y -= 1.0;
+        }
+
         // make diagonal movement not any faster
         if direction.length_squared() > 0.0 {
             direction = direction.normalize();
         }
 
-        rigid_body.velocity.0 += direction;
+        rigid_body.linear_velocity += direction;
     }
 }

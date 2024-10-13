@@ -71,23 +71,31 @@ pub struct RigidBody {
     pub fixed: bool,
     pub gravity: Gravity,
     pub speed: Speed,
-    pub velocity: Velocity,
+    // pub linear_velocity: Velocity,
+    pub linear_velocity: Vec3,
+    pub angular_velocity: Vec3,
     pub is_colliding: bool,
 }
 
 impl RigidBody {
-    fn apply_velocity(&mut self, position: &mut Vec3, delta_time: f32) {
-        *position += self.velocity.0 * self.speed.0 * delta_time;
+    fn apply_linear_velocity(&mut self, position: &mut Vec3, delta_time: f32) {
+        *position += self.linear_velocity * self.speed.0 * delta_time;
     }
 
     fn apply_damping(&mut self) {
-        self.velocity.0 *= 1.0 - self.damping.0;
+        self.linear_velocity *= 1.0 - self.damping.0;
+        self.angular_velocity *= 1.0 - self.damping.0;
     }
 
     fn apply_gravity(&mut self, position: &mut Vec3, delta_time: f32) {
         if !self.fixed {
             position.y -= self.gravity.0 * delta_time;
         }
+    }
+
+    fn apply_angular_velocity(&mut self, rotation: &mut Quat, delta_time: f32) {
+        let angular_change = Quat::from_rotation_y(self.angular_velocity.y * delta_time); // Example for Y-axis rotation
+        *rotation *= angular_change;
     }
 }
 
