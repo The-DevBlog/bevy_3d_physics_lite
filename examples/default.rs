@@ -10,7 +10,6 @@ fn main() {
             WorldInspectorPlugin::new(),
         ))
         .add_systems(Startup, (setup, spawn_player, spawn_object))
-        .add_systems(Update, movement)
         .run();
 }
 
@@ -53,10 +52,7 @@ fn setup(
         },
         Collider {
             cuboid: Vec3::new(15.0, 0.1, 15.0),
-            // fixed: true,
-            // ..default()
         },
-        // Collider::cuboid(15.0, 0.1, 15.0),
         RigidBody {
             fixed: true,
             ..default()
@@ -68,35 +64,6 @@ fn setup(
     cmds.spawn(camera);
     cmds.spawn(light);
     cmds.spawn(ground);
-}
-
-fn movement(keys: Res<ButtonInput<KeyCode>>, mut player_q: Query<(&mut RigidBody), With<Player>>) {
-    for mut rigid_body in player_q.iter_mut() {
-        let mut direction = Vec3::default();
-
-        if keys.pressed(KeyCode::KeyA) {
-            direction.x -= 1.0;
-        }
-
-        if keys.pressed(KeyCode::KeyD) {
-            direction.x += 1.0
-        }
-
-        if keys.pressed(KeyCode::KeyW) {
-            direction.z += 1.0;
-        }
-
-        if keys.pressed(KeyCode::KeyS) {
-            direction.z -= 1.0;
-        }
-
-        // make diagonal movement not any faster
-        if direction.length_squared() > 0.0 {
-            direction = direction.normalize();
-        }
-
-        rigid_body.velocity.0 += direction;
-    }
 }
 
 fn spawn_player(
@@ -123,6 +90,7 @@ fn spawn_player(
             speed: Speed(2.5),
             ..default()
         },
+        Controller,
         ColliderLines,
         Player,
         Name::new("Player"),

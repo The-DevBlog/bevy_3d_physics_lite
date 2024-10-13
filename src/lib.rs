@@ -1,17 +1,22 @@
 mod collider_lines;
+mod controller;
 mod physics;
 
 use bevy::prelude::*;
 use collider_lines::ColliderLinesPlugin;
+use controller::ControllerPlugin;
 use physics::PhysicsPlugin;
 
 pub struct Bevy3dPhysicsLitePlugin;
 
 impl Plugin for Bevy3dPhysicsLitePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((PhysicsPlugin, ColliderLinesPlugin));
+        app.add_plugins((PhysicsPlugin, ColliderLinesPlugin, ControllerPlugin));
     }
 }
+
+#[derive(Component)]
+pub struct Controller;
 
 #[derive(Component)]
 pub struct MapBase;
