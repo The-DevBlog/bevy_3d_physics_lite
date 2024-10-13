@@ -9,74 +9,162 @@ impl Plugin for PhysicsPlugin {
     }
 }
 
-// Check if two AABBs (Axis-Aligned Bounding Boxes) are colliding
-fn check_aabb_collision(cuboid_a: &Vec3, cuboid_b: &Vec3, pos_a: &Vec3, pos_b: &Vec3) -> bool {
-    let cuboid_a = *cuboid_a / 2.0;
-    let cuboid_b = *cuboid_b / 2.0;
+// Check if two OBBs (Oriented Bounding Boxes) are colliding
+fn check_obb_collision(
+    half_extents_a: &Vec3,
+    half_extents_b: &Vec3,
+    pos_a: &Vec3,
+    pos_b: &Vec3,
+    rot_a: &Quat,
+    rot_b: &Quat,
+) -> bool {
+    // Compute the orientation axes of OBB A and B
+    let axes_a = [*rot_a * Vec3::X, *rot_a * Vec3::Y, *rot_a * Vec3::Z];
 
-    (pos_a.x - pos_b.x).abs() <= (cuboid_a.x + cuboid_b.x)
-        && (pos_a.y - pos_b.y).abs() <= (cuboid_a.y + cuboid_b.y)
-        && (pos_a.z - pos_b.z).abs() <= (cuboid_a.z + cuboid_b.z)
+    let axes_b = [*rot_b * Vec3::X, *rot_b * Vec3::Y, *rot_b * Vec3::Z];
+
+    // Compute the translation vector between OBBs
+    let translation = *pos_b - *pos_a;
+
+    // List of axes to test (15 in total)
+    let mut axes = Vec::with_capacity(15);
+
+    // Add face normals of A and B
+    axes.extend_from_slice(&axes_a);
+    axes.extend_from_slice(&axes_b);
+
+    // Add cross products of edges
+    for i in 0..3 {
+        for j in 0..3 {
+            let axis = axes_a[i].cross(axes_b[j]);
+            if axis.length_squared() > 1e-6 {
+                axes.push(axis.normalize());
+            }
+        }
+    }
+
+    // Now test each axis
+    for axis in axes {
+        // Project OBB A onto axis
+        let r_a = half_extents_a.x * (axes_a[0].dot(axis)).abs()
+            + half_extents_a.y * (axes_a[1].dot(axis)).abs()
+            + half_extents_a.z * (axes_a[2].dot(axis)).abs();
+
+        // Project OBB B onto axis
+        let r_b = half_extents_b.x * (axes_b[0].dot(axis)).abs()
+            + half_extents_b.y * (axes_b[1].dot(axis)).abs()
+            + half_extents_b.z * (axes_b[2].dot(axis)).abs();
+
+        // Project the distance between centers onto axis
+        let d = translation.dot(axis).abs();
+
+        // If projections do not overlap, there is a separating axis
+        if d > r_a + r_b {
+            return false;
+        }
+    }
+
+    // No separating axis found
+    true
 }
 
 // Resolve the collision between two entities by adjusting their positions and velocities
-fn resolve_aabb_collision(
-    ent_a: (&mut Collider, &mut RigidBody, &mut Vec3),
-    ent_b: (&mut Collider, &mut RigidBody, &mut Vec3),
+fn resolve_obb_collision(
+    ent_a: (&mut Collider, &mut RigidBody, &mut Transform),
+    ent_b: (&mut Collider, &mut RigidBody, &mut Transform),
 ) {
-    let (collider_a, rigid_body_a, pos_a) = ent_a;
-    let (collider_b, rigid_body_b, pos_b) = ent_b;
+    let (collider_a, rigid_body_a, transform_a) = ent_a;
+    let (collider_b, rigid_body_b, transform_b) = ent_b;
 
-    let diff = *pos_a - *pos_b;
+    let half_extents_a = collider_a.cuboid / 2.0;
+    let half_extents_b = collider_b.cuboid / 2.0;
 
-    // Calculate overlap along each axis
-    let cuboid_a = collider_a.cuboid / 2.0;
-    let cuboid_b = collider_b.cuboid / 2.0;
-    let overlap_x = (cuboid_a.x + cuboid_b.x) - diff.x.abs();
-    let overlap_y = (cuboid_a.y + cuboid_b.y) - diff.y.abs();
-    let overlap_z = (cuboid_a.z + cuboid_b.z) - diff.z.abs();
+    let pos_a = transform_a.translation;
+    let pos_b = transform_b.translation;
 
-    // Find the axis with the least penetration
-    let mut axis = Vec3::ZERO;
-    let mut min_overlap = overlap_x;
-    axis.x = diff.x.signum();
+    let rot_a = transform_a.rotation;
+    let rot_b = transform_b.rotation;
 
-    if overlap_y < min_overlap {
-        min_overlap = overlap_y;
-        axis = Vec3::new(0.0, diff.y.signum(), 0.0);
+    // Compute the orientation axes of OBB A and B
+    let axes_a = [rot_a * Vec3::X, rot_a * Vec3::Y, rot_a * Vec3::Z];
+    let axes_b = [rot_b * Vec3::X, rot_b * Vec3::Y, rot_b * Vec3::Z];
+
+    // Compute the translation vector between OBBs
+    let translation = pos_b - pos_a;
+
+    // List of axes to test (15 in total)
+    let mut axes = Vec::with_capacity(15);
+
+    // Add face normals of A and B
+    axes.extend_from_slice(&axes_a);
+    axes.extend_from_slice(&axes_b);
+
+    // Add cross products of edges
+    for i in 0..3 {
+        for j in 0..3 {
+            let axis = axes_a[i].cross(axes_b[j]);
+            if axis.length_squared() > 1e-6 {
+                axes.push(axis.normalize());
+            }
+        }
     }
 
-    if overlap_z < min_overlap {
-        min_overlap = overlap_z;
-        axis = Vec3::new(0.0, 0.0, diff.z.signum());
+    // Now test each axis and find the axis with minimum penetration
+    let mut min_penetration = f32::MAX;
+    let mut collision_axis = Vec3::ZERO;
+
+    for axis in axes {
+        // Project OBB A onto axis
+        let r_a = half_extents_a.x * (axes_a[0].dot(axis)).abs()
+            + half_extents_a.y * (axes_a[1].dot(axis)).abs()
+            + half_extents_a.z * (axes_a[2].dot(axis)).abs();
+
+        // Project OBB B onto axis
+        let r_b = half_extents_b.x * (axes_b[0].dot(axis)).abs()
+            + half_extents_b.y * (axes_b[1].dot(axis)).abs()
+            + half_extents_b.z * (axes_b[2].dot(axis)).abs();
+
+        // Project the distance between centers onto axis
+        let d = translation.dot(axis);
+
+        let penetration = (r_a + r_b) - d.abs();
+
+        // If projections do not overlap, there is a separating axis (should not happen here)
+        if penetration < 0.0 {
+            // No collision along this axis
+            return;
+        } else if penetration < min_penetration {
+            min_penetration = penetration;
+            collision_axis = axis * d.signum();
+        }
     }
 
-    // Move objects apart along the axis of least penetration
+    // Move objects apart along the collision axis
     if !rigid_body_a.fixed {
-        *pos_a += axis * min_overlap * 0.5;
+        transform_a.translation -= collision_axis * (min_penetration * 0.5);
     }
 
     if !rigid_body_b.fixed {
-        *pos_b -= axis * min_overlap * 0.5;
+        transform_b.translation += collision_axis * (min_penetration * 0.5);
     }
 
-    // Reflect velocities (simple elastic collision)
+    // Adjust velocities (simple elastic collision)
     let relative_velocity = rigid_body_a.linear_velocity - rigid_body_b.linear_velocity;
-    let velocity_along_axis = relative_velocity.dot(axis);
+    let velocity_along_axis = relative_velocity.dot(collision_axis);
 
     let restitution = 0.8; // Coefficient of restitution (bounciness)
     let impulse = -(1.0 + restitution) * velocity_along_axis / 2.0;
 
     if !rigid_body_a.fixed {
-        rigid_body_a.linear_velocity += impulse * axis;
+        rigid_body_a.linear_velocity += impulse * collision_axis;
     }
 
     if !rigid_body_b.fixed {
-        rigid_body_b.linear_velocity -= impulse * axis;
+        rigid_body_b.linear_velocity -= impulse * collision_axis;
     }
 }
 
-// main update system for applying
+// Main update system for collision detection and resolution
 fn collisions(
     mut query: Query<
         (
@@ -98,26 +186,28 @@ fn collisions(
     ) = entities.fetch_next()
     {
         // Check and resolve collisions if they collide
-        if check_aabb_collision(
-            &collider_a.cuboid,
-            &collider_b.cuboid,
+        if check_obb_collision(
+            &(collider_a.cuboid / 2.0),
+            &(collider_b.cuboid / 2.0),
             &transform_a.translation,
             &transform_b.translation,
+            &transform_a.rotation,
+            &transform_b.rotation,
         ) {
             if mapbase_a.is_none() && mapbase_b.is_none() {
                 rb_a.is_colliding = true;
                 rb_b.is_colliding = true;
             }
 
-            resolve_aabb_collision(
-                (&mut collider_a, &mut rb_a, &mut transform_a.translation),
-                (&mut collider_b, &mut rb_b, &mut transform_b.translation),
+            resolve_obb_collision(
+                (&mut collider_a, &mut rb_a, &mut transform_a),
+                (&mut collider_b, &mut rb_b, &mut transform_b),
             );
         }
     }
 }
 
-// main system for applying physics
+// Main system for applying physics
 fn apply_physics(mut query: Query<(&mut RigidBody, &mut Transform)>, time: Res<Time>) {
     for (mut rigid_body, mut transform) in query.iter_mut() {
         let delta = time.delta_seconds();

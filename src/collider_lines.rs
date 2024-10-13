@@ -24,6 +24,7 @@ fn lines(
         gizmos.cuboid(
             Transform {
                 translation: transform.translation,
+                rotation: transform.rotation,
                 scale: collider.cuboid,
                 ..default()
             },
