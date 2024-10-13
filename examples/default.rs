@@ -13,9 +13,6 @@ fn main() {
         .run();
 }
 
-#[derive(Component)]
-struct Player;
-
 fn setup(
     mut cmds: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -92,7 +89,6 @@ fn spawn_player(
         },
         Controller,
         ColliderLines,
-        Player,
         Name::new("Player"),
     ));
 }
