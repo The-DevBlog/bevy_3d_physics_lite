@@ -61,18 +61,18 @@ fn resolve_aabb_collision(
     }
 
     // Reflect velocities (simple elastic collision)
-    let relative_velocity = rigid_body_a.velocity.0 - rigid_body_b.velocity.0;
+    let relative_velocity = rigid_body_a.linear_velocity - rigid_body_b.linear_velocity;
     let velocity_along_axis = relative_velocity.dot(axis);
 
     let restitution = 0.8; // Coefficient of restitution (bounciness)
     let impulse = -(1.0 + restitution) * velocity_along_axis / 2.0;
 
     if !rigid_body_a.fixed {
-        rigid_body_a.velocity.0 += impulse * axis;
+        rigid_body_a.linear_velocity += impulse * axis;
     }
 
     if !rigid_body_b.fixed {
-        rigid_body_b.velocity.0 -= impulse * axis;
+        rigid_body_b.linear_velocity -= impulse * axis;
     }
 }
 
@@ -120,8 +120,11 @@ fn collisions(
 // main system for applying physics
 fn apply_physics(mut query: Query<(&mut RigidBody, &mut Transform)>, time: Res<Time>) {
     for (mut rigid_body, mut transform) in query.iter_mut() {
+        let delta = time.delta_seconds();
+
         rigid_body.apply_damping(); // apply damping BEFORE velocity
-        rigid_body.apply_velocity(&mut transform.translation, time.delta_seconds());
-        rigid_body.apply_gravity(&mut transform.translation, time.delta_seconds());
+        rigid_body.apply_linear_velocity(&mut transform.translation, delta);
+        rigid_body.apply_angular_velocity(&mut transform.rotation, delta);
+        rigid_body.apply_gravity(&mut transform.translation, delta);
     }
 }
