@@ -1,11 +1,10 @@
-use std::f32::EPSILON;
-
 use bevy::prelude::*;
 use bevy::{math::bounding::Aabb2d, window::PrimaryWindow};
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_rapier3d::prelude::*;
 use bevy_rts_camera::{Ground, RtsCamera, RtsCameraControls, RtsCameraPlugin};
 
+const GREEN: Hsla = Hsla::hsl(120.0, 0.22, 0.3);
 const MAP_SIZE: f32 = 400.0;
 const UNITS: i32 = 100;
 
@@ -18,8 +17,10 @@ fn main() {
             RapierPhysicsPlugin::<NoUserData>::default(),
             WorldInspectorPlugin::new(),
         ))
-        .add_systems(Startup, (spawn_map, spawn_camera, spawn_unit))
-        .add_systems(Update, (set_unit_destination, move_unit))
+        .init_resource::<MouseCoords>()
+        .init_resource::<BoxCoords>()
+        .init_resource::<GameCommands>()
+        .add_systems(Startup, (spawn_camera, spawn_map, spawn_unit))
         .add_systems(
             Update,
             (
@@ -34,78 +35,27 @@ fn main() {
                 .chain()
                 .after(set_unit_destination),
         )
+        .add_systems(Update, (move_unit, set_unit_destination))
         .run();
 }
-
-#[derive(Component)]
-pub struct Selected;
 
 #[derive(Component)]
 pub struct Speed(pub f32);
 
 #[derive(Component)]
-pub struct Destination(pub Option<Vec3>);
+pub struct Unit;
 
 #[derive(Component)]
-pub struct Unit;
+pub struct Selected;
 
 #[derive(Component)]
 pub struct MapBase;
 
-fn spawn_camera(mut cmds: Commands) {
-    cmds.spawn((
-        Camera3dBundle::default(),
-        RtsCamera {
-            bounds: Aabb2d::new(Vec2::ZERO, Vec2::new(MAP_SIZE / 2.0, MAP_SIZE / 2.0)),
-            height_max: 100.0,
-            ..default()
-        },
-        RtsCameraControls {
-            key_left: KeyCode::KeyA,
-            key_right: KeyCode::KeyD,
-            key_up: KeyCode::KeyW,
-            key_down: KeyCode::KeyS,
-            pan_speed: 50.0,
-            zoom_sensitivity: 0.2,
-            ..default()
-        },
-    ));
-}
+#[derive(Component)]
+pub struct Commandable;
 
-fn spawn_map(
-    mut cmds: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    // Ground
-    cmds.spawn((
-        PbrBundle {
-            mesh: meshes.add(Plane3d::default().mesh().size(MAP_SIZE, MAP_SIZE)),
-            material: materials.add(Color::rgb(0.3, 0.5, 0.3)),
-            ..default()
-        },
-        Collider::cuboid(MAP_SIZE / 2.0, 0.0, MAP_SIZE / 2.0),
-        Ground,
-        MapBase,
-        Name::new("Map Base"),
-    ));
-
-    // Light
-    cmds.spawn(DirectionalLightBundle {
-        directional_light: DirectionalLight {
-            illuminance: 1000.0,
-            shadows_enabled: true,
-            ..default()
-        },
-        transform: Transform::from_rotation(Quat::from_euler(
-            EulerRot::YXZ,
-            150.0f32.to_radians(),
-            -40.0f32.to_radians(),
-            0.0,
-        )),
-        ..default()
-    });
-}
+#[derive(Component)]
+pub struct Destination(pub Option<Vec3>);
 
 #[derive(Resource, Default, Debug)]
 pub struct MouseCoords {
@@ -136,11 +86,10 @@ pub struct GameCommands {
 }
 
 #[derive(Bundle)]
-struct UnitBundle {
+pub struct UnitBundle {
     pub collider: Collider,
     pub damping: Damping,
     pub external_impulse: ExternalImpulse,
-    pub name: Name,
     pub rigid_body: RigidBody,
     pub speed: Speed,
     pub destination: Destination,
@@ -149,15 +98,14 @@ struct UnitBundle {
 }
 
 impl UnitBundle {
-    fn new(speed: f32, size: f32) -> Self {
+    pub fn new(speed: f32, size: Vec3) -> Self {
         Self {
-            collider: Collider::cylinder(size, size / 2.0),
+            collider: Collider::cuboid(size.x, size.y, size.z),
             damping: Damping {
-                linear_damping: 10.0,
+                linear_damping: 5.0,
                 ..default()
             },
             external_impulse: ExternalImpulse::default(),
-            name: Name::new("Unit"),
             rigid_body: RigidBody::Dynamic,
             speed: Speed(speed),
             destination: Destination(None),
@@ -172,22 +120,24 @@ fn spawn_unit(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let mut unit = |size: f32, speed: f32, translation: Vec3| -> (PbrBundle, UnitBundle) {
-        (
-            PbrBundle {
-                mesh: meshes.add(Capsule3d::new(size / 2.0, size)),
-                transform: Transform {
-                    translation: translation,
+    let mut unit =
+        |size: f32, speed: f32, translation: Vec3| -> (PbrBundle, Commandable, UnitBundle) {
+            (
+                PbrBundle {
+                    mesh: meshes.add(Cuboid::new(size, size, size)),
+                    transform: Transform {
+                        translation: translation,
+                        ..default()
+                    },
+                    material: materials.add(Color::BLACK),
                     ..default()
                 },
-                material: materials.add(Color::BLACK),
-                ..default()
-            },
-            UnitBundle::new(speed, size),
-        )
-    };
+                Commandable,
+                UnitBundle::new(speed, Vec3::new(size / 2.0, size / 2.0, size / 2.0)),
+            )
+        };
 
-    let offset_increment = 1.5;
+    let offset_increment = 2.0;
     for row_index in 0..(UNITS / 10) {
         let offset = row_index as f32 * offset_increment;
 
@@ -197,39 +147,60 @@ fn spawn_unit(
     }
 }
 
-pub fn set_unit_destination(
-    mouse_coords: ResMut<MouseCoords>,
-    mut unit_q: Query<(&mut Destination, &Transform), With<Selected>>,
-    input: Res<ButtonInput<MouseButton>>,
-    game_cmds: Res<GameCommands>,
+fn spawn_map(
+    mut cmds: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !input.just_released(MouseButton::Left) || game_cmds.drag_select {
-        return;
-    }
+    // Ground
+    cmds.spawn((
+        PbrBundle {
+            mesh: meshes.add(Plane3d::default().mesh().size(MAP_SIZE, MAP_SIZE)),
+            material: materials.add(Color::srgb(0.3, 0.5, 0.3)),
+            ..default()
+        },
+        Collider::cuboid(MAP_SIZE / 2.0, 0.0, MAP_SIZE / 2.0),
+        Ground,
+        MapBase,
+        Name::new("Map Base"),
+    ));
 
-    for (mut unit_destination, trans) in unit_q.iter_mut() {
-        let mut destination = mouse_coords.global;
-        destination.y += trans.scale.y / 2.0; // calculate for entity height
-        unit_destination.0 = Some(destination);
-        println!("Unit Moving");
-    }
+    // Light
+    cmds.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            illuminance: 1000.0,
+            shadows_enabled: true,
+            ..default()
+        },
+        transform: Transform::from_rotation(Quat::from_euler(
+            EulerRot::YXZ,
+            150.0f32.to_radians(),
+            -40.0f32.to_radians(),
+            0.0,
+        )),
+        ..default()
+    });
 }
 
-fn move_unit(
-    mut unit_q: Query<(&Transform, &mut ExternalImpulse, &Speed, &mut Destination), With<Unit>>,
-    time: Res<Time>,
-) {
-    for (trans, mut ext_impulse, speed, mut destination) in unit_q.iter_mut() {
-        if let Some(new_pos) = destination.0 {
-            let distance = new_pos - trans.translation;
-            if distance.length_squared() <= (speed.0 * time.delta_seconds()).powi(2) + EPSILON {
-                destination.0 = None;
-                println!("Unit Stopping");
-            } else {
-                ext_impulse.impulse += distance.normalize() * speed.0 * time.delta_seconds();
-            }
-        }
-    }
+fn spawn_camera(mut cmds: Commands) {
+    cmds.spawn((
+        Camera3dBundle::default(),
+        RtsCamera {
+            bounds: Aabb2d::new(Vec2::ZERO, Vec2::new(MAP_SIZE / 2.0, MAP_SIZE / 2.0)),
+            min_angle: 60.0f32.to_radians(),
+            height_max: 100.0,
+            ..default()
+        },
+        RtsCameraControls {
+            key_left: KeyCode::KeyA,
+            key_right: KeyCode::KeyD,
+            key_up: KeyCode::KeyW,
+            key_down: KeyCode::KeyS,
+            pan_speed: 150.0,
+            zoom_sensitivity: 0.2,
+            ..default()
+        },
+    ));
 }
 
 fn set_drag_select(box_coords: Res<BoxCoords>, mut game_cmds: ResMut<GameCommands>) {
@@ -280,6 +251,7 @@ fn set_mouse_coords(
 
     let plane_origin = map_base_trans.translation();
     let plane = InfinitePlane3d::new(map_base_trans.up());
+    // let plane = Plane3d::new(map_base_trans.up());
     let Some(ray) = cam.viewport_to_world(cam_trans, local_cursor) else {
         return;
     };
@@ -295,7 +267,8 @@ fn set_mouse_coords(
 pub fn drag_select(
     mut cmds: Commands,
     mut gizmos: Gizmos,
-    unit_q: Query<(Entity, &Transform), With<Unit>>,
+    unit_q: Query<(Entity, &Transform), With<Commandable>>,
+    // unit_q: Query<(Entity, &Transform), With<Unit>>,
     box_coords: Res<BoxCoords>,
     game_cmds: Res<GameCommands>,
 ) {
@@ -307,10 +280,11 @@ pub fn drag_select(
     let end = box_coords.global_end;
 
     // draw rectangle
-    gizmos.line(start, Vec3::new(end.x, 0.0, start.z), Color::BLACK);
-    gizmos.line(start, Vec3::new(start.x, 0.0, end.z), Color::BLACK);
-    gizmos.line(Vec3::new(start.x, 0.0, end.z), end, Color::BLACK);
-    gizmos.line(Vec3::new(end.x, 0.0, start.z), end, Color::BLACK);
+    let gray = Color::srgb(0.68, 0.68, 0.68);
+    gizmos.line(start, Vec3::new(end.x, 0.0, start.z), gray);
+    gizmos.line(start, Vec3::new(start.x, 0.0, end.z), gray);
+    gizmos.line(Vec3::new(start.x, 0.0, end.z), end, gray);
+    gizmos.line(Vec3::new(end.x, 0.0, start.z), end, gray);
 
     let min_x = start.x.min(end.x);
     let max_x = start.x.max(end.x);
@@ -327,13 +301,14 @@ pub fn drag_select(
 
         if in_box_bounds {
             cmds.entity(unit_ent).insert((
-                ColliderDebugColor(Hsla::new(120.0 / 360.0, 1.0, 0.5, 1.0)),
+                // ColliderDebugColor(Color::hsla(120.0, 0.22, 0.3, 0.0)),
+                ColliderDebugColor(GREEN),
                 Selected,
             ));
         } else {
             cmds.entity(unit_ent)
                 .remove::<Selected>()
-                .insert(ColliderDebugColor(Hsla::new(0.0, 0.0, 0.0, 0.0)));
+                .insert(ColliderDebugColor(Hsla::new(0.0, 0.0, 0.0, 1.0)));
         }
     }
 }
@@ -346,6 +321,7 @@ pub fn single_select(
     mouse_coords: Res<MouseCoords>,
     input: Res<ButtonInput<MouseButton>>,
     game_cmds: Res<GameCommands>,
+    commandable_q: Query<&Commandable>,
 ) {
     if !input.just_released(MouseButton::Left) || game_cmds.drag_select {
         return;
@@ -366,19 +342,19 @@ pub fn single_select(
     );
 
     if let Some((ent, _)) = hit {
-        // deselect all currently selected entities
-        for (selected_entity, _) in select_q.iter() {
-            cmds.entity(selected_entity)
-                .insert(ColliderDebugColor(Hsla::new(0.0, 0.0, 0.0, 0.0)))
-                .remove::<Selected>();
-        }
+        if commandable_q.get(ent).is_ok() {
+            // deselect all currently selected entities
+            for (selected_entity, _) in select_q.iter() {
+                cmds.entity(selected_entity)
+                    .insert(ColliderDebugColor(Hsla::new(0.0, 0.0, 0.0, 1.0)))
+                    .remove::<Selected>();
+            }
 
-        // select unit
-        if !select_q.contains(ent) {
-            cmds.entity(ent).insert((
-                ColliderDebugColor(Hsla::new(120.0 / 360.0, 1.0, 0.5, 1.0)),
-                Selected,
-            ));
+            // select unit
+            if !select_q.contains(ent) {
+                cmds.entity(ent)
+                    .insert((ColliderDebugColor(GREEN), Selected));
+            }
         }
     }
 }
@@ -392,7 +368,7 @@ pub fn deselect_all(
         for ent in select_q.iter_mut() {
             println!("Unit deselected");
             cmds.entity(ent)
-                .insert(ColliderDebugColor(Hsla::new(0.0, 0.0, 0.0, 0.0)));
+                .insert(ColliderDebugColor(Hsla::new(0.0, 0.0, 0.0, 1.0)));
             cmds.entity(ent).remove::<Selected>();
         }
     }
@@ -400,4 +376,58 @@ pub fn deselect_all(
 
 fn set_selected(mut game_cmds: ResMut<GameCommands>, select_q: Query<&Selected>) {
     game_cmds.selected = !select_q.is_empty();
+}
+
+pub fn set_unit_destination(
+    mouse_coords: ResMut<MouseCoords>,
+    mut unit_q: Query<(&mut Destination, &Transform), With<Selected>>,
+    input: Res<ButtonInput<MouseButton>>,
+    game_cmds: Res<GameCommands>,
+) {
+    if !input.just_released(MouseButton::Left) || game_cmds.drag_select {
+        return;
+    }
+
+    for (mut unit_destination, trans) in unit_q.iter_mut() {
+        let mut destination = mouse_coords.global;
+        destination.y += trans.scale.y / 2.0; // calculate for entity height
+        unit_destination.0 = Some(destination);
+        println!("Unit Moving to ({}, {})", destination.x, destination.y);
+    }
+}
+
+fn move_unit(
+    mut unit_q: Query<
+        (
+            &mut Transform,
+            &mut ExternalImpulse,
+            &Speed,
+            &mut Destination,
+        ),
+        With<Unit>,
+    >,
+    time: Res<Time>,
+) {
+    for (mut trans, mut ext_impulse, speed, mut destination) in unit_q.iter_mut() {
+        if let Some(new_pos) = destination.0 {
+            let distance = new_pos - trans.translation;
+            if distance.length_squared() <= 5.0 {
+                destination.0 = None;
+                println!("Unit Stopping");
+            } else {
+                // Calculate the direction vector on the XZ plane
+                let direction = Vec3::new(distance.x, 0.0, distance.z).normalize();
+
+                // Set the impulse to move the unit
+                ext_impulse.impulse += direction * speed.0 * time.delta_seconds();
+
+                // Calculate the target Y rotation (yaw)
+                let target_yaw = direction.x.atan2(direction.z); // Corrected yaw calculation
+                let target_rotation = Quat::from_rotation_y(target_yaw); // Remove adjustment for facing direction
+
+                // Update the unit's rotation to face the direction
+                trans.rotation = target_rotation;
+            }
+        }
+    }
 }
