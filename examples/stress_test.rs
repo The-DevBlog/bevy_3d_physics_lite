@@ -84,7 +84,7 @@ fn spawn_player(
         },
         RigidBody {
             damping: Damping(0.2),
-            gravity: Gravity(1.0),
+            gravity: Gravity(0.0),
             speed: Speed(2.5),
             ..default()
         },
@@ -116,7 +116,7 @@ fn spawn_objects(
                 cuboid: Vec3::new(0.2, 0.2, 0.2),
             },
             RigidBody {
-                gravity: Gravity(2.0),
+                gravity: Gravity(0.0),
                 damping: Damping(0.25),
                 ..default()
             },
@@ -128,6 +128,6 @@ fn spawn_objects(
     for i in 0..OBJECT_COUNT {
         let x = (i as f32 % 10.0) - 2.5;
         let z = (i as f32 / 10.0).floor() - 2.5;
-        commands.spawn(obj(Vec3::new(x, 5.0, z)));
+        commands.spawn(obj(Vec3::new(x, 0.1, z)));
     }
 }

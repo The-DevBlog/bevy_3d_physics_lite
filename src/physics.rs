@@ -160,7 +160,7 @@ fn collisions(
     // }
 
     // Choose a cell size based on your game’s scale.
-    const CELL_SIZE: f32 = 5.0;
+    const CELL_SIZE: f32 = 1.0;
 
     // Build the spatial grid.
     // The key is an IVec3 cell index; the value is a vector of tuples:
