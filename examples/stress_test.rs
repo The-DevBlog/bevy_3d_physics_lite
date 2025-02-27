@@ -3,7 +3,7 @@ use bevy_3d_physics_lite::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_rts_camera::{RtsCamera, RtsCameraControls, RtsCameraPlugin};
 
-const OBJECT_COUNT: usize = 1000;
+const OBJECT_COUNT: usize = 5000;
 
 fn main() {
     App::new()

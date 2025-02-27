@@ -52,7 +52,8 @@ fn check_obb_collision(
 }
 
 /// Resolves the collision between two OBBs by moving them apart along the collision axis
-/// and adjusting their velocities (a simple elastic collision).
+/// and adjusting their velocities (using a simple elastic collision response).
+/// Here we “lock” the Y axis by zeroing any translation or velocity change in Y.
 fn resolve_obb_collision(
     ent_a: (&mut Collider, &mut RigidBody, &mut Transform),
     ent_b: (&mut Collider, &mut RigidBody, &mut Transform),
@@ -95,43 +96,55 @@ fn resolve_obb_collision(
         let d = translation.dot(axis);
         let penetration = (r_a + r_b) - d.abs();
         if penetration < 0.0 {
-            return; // no collision on this axis (should not happen if already colliding)
+            return; // no collision on this axis
         } else if penetration < min_penetration {
             min_penetration = penetration;
             collision_axis = axis * d.signum();
         }
     }
 
-    // Separate the objects
+    // Compute separation delta and zero out any Y adjustment.
+    let mut delta = collision_axis * (min_penetration * 0.5);
+    delta.y = 0.0; // Lock Y axis: do not adjust Y coordinate.
     if !rigid_body_a.fixed {
-        transform_a.translation -= collision_axis * (min_penetration * 0.5);
+        transform_a.translation -= delta;
     }
+    let mut delta_b = collision_axis * (min_penetration * 0.5);
+    delta_b.y = 0.0;
     if !rigid_body_b.fixed {
-        transform_b.translation += collision_axis * (min_penetration * 0.5);
+        transform_b.translation += delta_b;
     }
 
-    // Simple elastic collision response
+    // Adjust velocities using a simple elastic collision response.
     let relative_velocity = rigid_body_a.linear_velocity - rigid_body_b.linear_velocity;
     let velocity_along_axis = relative_velocity.dot(collision_axis);
     let restitution = 0.8;
     let impulse = -(1.0 + restitution) * velocity_along_axis / 2.0;
+    let mut vel_change = impulse * collision_axis;
+    vel_change.y = 0.0; // Do not change Y velocity.
     if !rigid_body_a.fixed {
-        rigid_body_a.linear_velocity += impulse * collision_axis;
+        rigid_body_a.linear_velocity += vel_change;
     }
     if !rigid_body_b.fixed {
-        rigid_body_b.linear_velocity -= impulse * collision_axis;
+        rigid_body_b.linear_velocity -= vel_change;
     }
 }
 
 // -- Physics Integration System --
-
+// After applying forces, we force the Y coordinate to remain constant.
 fn apply_physics(mut query: Query<(&mut RigidBody, &mut Transform)>, time: Res<Time>) {
+    // Desired locked Y value (adjust as necessary).
+    const LOCKED_Y: f32 = 1.0;
+
     for (mut rigid_body, mut transform) in query.iter_mut() {
         let delta = time.delta_secs();
         rigid_body.apply_damping();
         rigid_body.apply_linear_velocity(&mut transform.translation, delta);
         rigid_body.apply_angular_velocity(&mut transform.rotation, delta);
         rigid_body.apply_gravity(&mut transform.translation, delta);
+
+        // Lock the Y coordinate.
+        transform.translation.y = LOCKED_Y;
     }
 }
 
@@ -159,7 +172,6 @@ fn collisions(
 
     for (entity, collider, mut rb, transform, _mapbase) in query.iter_mut() {
         rb.is_colliding = false;
-
         let half_extents = collider.cuboid / 2.0;
         let pos = transform.translation;
         let cell = (pos / CELL_SIZE).floor().as_ivec3();
@@ -224,7 +236,6 @@ fn collisions(
     for (entity_a, entity_b) in collision_pairs {
         // Use get_many_mut to obtain mutable references to both entities at once.
         if let Ok([mut data_a, mut data_b]) = query.get_many_mut([entity_a, entity_b]) {
-            // Destructure the tuple for each entity.
             let (_, ref mut collider_a, ref mut rb_a, ref mut transform_a, _) = data_a;
             let (_, ref mut collider_b, ref mut rb_b, ref mut transform_b, _) = data_b;
 
