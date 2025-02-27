@@ -128,15 +128,10 @@ fn resolve_obb_collision(
 fn apply_physics(mut query: Query<(&mut RigidBody, &mut Transform)>, time: Res<Time>) {
     for (mut rigid_body, mut transform) in query.iter_mut() {
         let delta = time.delta_secs();
-        // Here you would typically apply damping, gravity, and integrate velocities.
-        // For simplicity, we just update the position using the current linear velocity.
-
         rigid_body.apply_damping();
         rigid_body.apply_linear_velocity(&mut transform.translation, delta);
         rigid_body.apply_angular_velocity(&mut transform.rotation, delta);
         rigid_body.apply_gravity(&mut transform.translation, delta);
-
-        // transform.translation += rigid_body.linear_velocity * delta;
     }
 }
 
@@ -154,11 +149,6 @@ fn collisions(
         With<Collider>,
     >,
 ) {
-    // Reset collision flags.
-    // for (_, mut rigid_body, _, _, _) in query.iter_mut() {
-    //     rigid_body.is_colliding = false;
-    // }
-
     // Choose a cell size based on your game’s scale.
     const CELL_SIZE: f32 = 1.0;
 

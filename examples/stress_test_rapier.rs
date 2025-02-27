@@ -3,7 +3,7 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_rapier3d::prelude::*;
 use bevy_rts_camera::{RtsCamera, RtsCameraControls, RtsCameraPlugin};
 
-const OBJECT_COUNT: usize = 200;
+const OBJECT_COUNT: usize = 5000;
 
 fn main() {
     App::new()
@@ -14,46 +14,26 @@ fn main() {
             RapierDebugRenderPlugin::default(),
             RtsCameraPlugin,
         ))
-        .add_systems(Startup, (setup, spawn_player, spawn_objects))
+        .add_systems(Startup, (setup, spawn_objects))
         .add_systems(Update, movement)
         .run();
 }
 
 fn movement(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut q_impulse: Query<&mut ExternalImpulse>,
+    _keys: Res<ButtonInput<KeyCode>>,
+    mut q_impulse: Query<(&Transform, &mut ExternalImpulse)>,
     time: Res<Time>,
 ) {
-    // for mut rigid_body in controller_q.iter_mut() {
-    let mut direction = Vec3::default();
+    let delta_secs = time.delta_secs();
+    let impulse_strength = 0.01;
 
-    // left
-    if keys.pressed(KeyCode::KeyA) {
-        direction.x -= 1.0;
-    }
+    for (transform, mut ext_impulse) in q_impulse.iter_mut() {
+        let to_center = Vec3::ZERO - transform.translation;
 
-    // right
-    if keys.pressed(KeyCode::KeyD) {
-        direction.x += 1.0
-    }
-
-    // up
-    if keys.pressed(KeyCode::KeyW) {
-        direction.z += 1.0;
-    }
-
-    // down
-    if keys.pressed(KeyCode::KeyS) {
-        direction.z -= 1.0;
-    }
-
-    // make diagonal movement not any faster
-    if direction.length_squared() > 0.0 {
-        direction = direction.normalize();
-    }
-
-    if let Ok(mut impulse) = q_impulse.get_single_mut() {
-        impulse.impulse = direction * 30.0 * time.delta_secs();
+        if to_center.length_squared() > 1e-4 {
+            let direction = to_center.normalize();
+            ext_impulse.impulse = direction * impulse_strength * delta_secs;
+        }
     }
 }
 
@@ -72,10 +52,10 @@ fn setup(
         },
         RtsCameraControls {
             edge_pan_width: 0.01,
-            key_left: KeyCode::ArrowLeft,
-            key_right: KeyCode::ArrowRight,
-            key_up: KeyCode::ArrowUp,
-            key_down: KeyCode::ArrowDown,
+            key_left: KeyCode::KeyA,
+            key_right: KeyCode::KeyD,
+            key_up: KeyCode::KeyW,
+            key_down: KeyCode::KeyS,
             pan_speed: 75.0,
             zoom_sensitivity: 0.2,
             ..default()
@@ -103,51 +83,43 @@ fn setup(
     cmds.spawn(ground);
 }
 
-fn spawn_player(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-) {
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(StandardMaterial::from_color(Color::BLACK))),
-        Transform::from_xyz(0.0, 0.5, -20.0),
-        Collider::cuboid(0.5, 0.5, 0.5),
-        RigidBody::Dynamic,
-        Damping {
-            linear_damping: 10.0,
-            angular_damping: 20.0,
-            ..default()
-        },
-        ExternalImpulse::default(),
-        Name::new("Player"),
-    ));
-}
-
 fn spawn_objects(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
+    // Closure that creates a new object with the given position.
     let mut obj = |position: Vec3| -> (
         Mesh3d,
         MeshMaterial3d<StandardMaterial>,
         Transform,
         Collider,
+        GravityScale,
         RigidBody,
+        LockedAxes,
+        ExternalImpulse,
     ) {
         (
             Mesh3d(meshes.add(Cuboid::new(0.2, 0.2, 0.2))),
             MeshMaterial3d(materials.add(StandardMaterial::from_color(Color::WHITE))),
             Transform::from_translation(position),
             Collider::cuboid(0.1, 0.1, 0.1),
+            GravityScale(0.0),
             RigidBody::Dynamic,
+            LockedAxes::TRANSLATION_LOCKED_Y,
+            ExternalImpulse::default(),
         )
     };
 
+    let grid_size = (OBJECT_COUNT as f32).sqrt().ceil() as usize;
+    let spacing = 1.0;
+    let offset = (grid_size as f32 - 1.0) / 2.0;
+
     for i in 0..OBJECT_COUNT {
-        let x = (i as f32 % 10.0) - 0.5;
-        let z = (i as f32 / 10.0).floor() - 0.5;
+        let col = i % grid_size;
+        let row = i / grid_size;
+        let x = col as f32 * spacing - offset * spacing;
+        let z = row as f32 * spacing - offset * spacing;
         commands.spawn(obj(Vec3::new(x, 1.0, z)));
     }
 }

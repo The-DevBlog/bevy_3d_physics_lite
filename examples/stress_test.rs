@@ -3,7 +3,7 @@ use bevy_3d_physics_lite::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_rts_camera::{RtsCamera, RtsCameraControls, RtsCameraPlugin};
 
-const OBJECT_COUNT: usize = 200;
+const OBJECT_COUNT: usize = 1000;
 
 fn main() {
     App::new()
@@ -13,7 +13,8 @@ fn main() {
             WorldInspectorPlugin::new(),
             RtsCameraPlugin,
         ))
-        .add_systems(Startup, (setup, spawn_player, spawn_objects))
+        .add_systems(Startup, (setup, spawn_objects))
+        .add_systems(Update, movement)
         .run();
 }
 
@@ -32,10 +33,10 @@ fn setup(
         },
         RtsCameraControls {
             edge_pan_width: 0.01,
-            key_left: KeyCode::ArrowLeft,
-            key_right: KeyCode::ArrowRight,
-            key_up: KeyCode::ArrowUp,
-            key_down: KeyCode::ArrowDown,
+            key_left: KeyCode::KeyA,
+            key_right: KeyCode::KeyD,
+            key_up: KeyCode::KeyW,
+            key_down: KeyCode::KeyS,
             pan_speed: 75.0,
             zoom_sensitivity: 0.2,
             ..default()
@@ -70,28 +71,26 @@ fn setup(
     cmds.spawn(ground);
 }
 
-fn spawn_player(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
+fn movement(
+    _keys: Res<ButtonInput<KeyCode>>,
+    mut q_rb: Query<(&Transform, &mut RigidBody)>,
+    time: Res<Time>,
 ) {
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(StandardMaterial::from_color(Color::BLACK))),
-        Transform::from_xyz(0.0, 0.5, -20.0),
-        Collider {
-            cuboid: Vec3::new(1.0, 1.0, 1.0),
-        },
-        RigidBody {
-            damping: Damping(0.2),
-            gravity: Gravity(0.0),
-            speed: Speed(2.5),
-            ..default()
-        },
-        Controller,
-        ColliderLines,
-        Name::new("Player"),
-    ));
+    let delta_secs = time.delta_secs();
+    let impulse_strength = 200.0;
+
+    for (transform, mut rb) in q_rb.iter_mut() {
+        let to_center = Vec3::ZERO - transform.translation;
+
+        // println!("To center: {:?}", to_center);
+        if to_center.length_squared() > 1e-4 {
+            let direction = to_center.normalize();
+            rb.linear_velocity = direction * impulse_strength * delta_secs;
+        }
+        // else {
+        //     rb.linear_velocity = Vec3::ZERO;
+        // }
+    }
 }
 
 fn spawn_objects(
@@ -125,9 +124,15 @@ fn spawn_objects(
         )
     };
 
+    let grid_size = (OBJECT_COUNT as f32).sqrt().ceil() as usize;
+    let spacing = 1.0;
+    let offset = (grid_size as f32 - 1.0) / 2.0;
+
     for i in 0..OBJECT_COUNT {
-        let x = (i as f32 % 10.0) - 2.5;
-        let z = (i as f32 / 10.0).floor() - 2.5;
-        commands.spawn(obj(Vec3::new(x, 0.1, z)));
+        let col = i % grid_size;
+        let row = i / grid_size;
+        let x = col as f32 * spacing - offset * spacing;
+        let z = row as f32 * spacing - offset * spacing;
+        commands.spawn(obj(Vec3::new(x, 0.2, z)));
     }
 }
