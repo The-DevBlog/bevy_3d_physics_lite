@@ -117,6 +117,7 @@ fn spawn_objects(
             },
             RigidBody {
                 gravity: Gravity(2.0),
+                damping: Damping(0.25),
                 ..default()
             },
             ColliderLines,
@@ -127,6 +128,6 @@ fn spawn_objects(
     for i in 0..OBJECT_COUNT {
         let x = (i as f32 % 10.0) - 2.5;
         let z = (i as f32 / 10.0).floor() - 2.5;
-        commands.spawn(obj(Vec3::new(x, 1.0, z)));
+        commands.spawn(obj(Vec3::new(x, 5.0, z)));
     }
 }
