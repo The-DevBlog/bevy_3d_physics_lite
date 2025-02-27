@@ -210,7 +210,7 @@ fn collisions(
 // Main system for applying physics
 fn apply_physics(mut query: Query<(&mut RigidBody, &mut Transform)>, time: Res<Time>) {
     for (mut rigid_body, mut transform) in query.iter_mut() {
-        let delta = time.delta_seconds();
+        let delta = time.delta_secs();
 
         rigid_body.apply_damping(); // apply damping BEFORE velocity
         rigid_body.apply_linear_velocity(&mut transform.translation, delta);

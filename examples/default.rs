@@ -19,34 +19,23 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let camera = (
-        Camera3dBundle {
-            transform: Transform::from_xyz(5.0, 3.5, 11.0).looking_at(Vec3::ZERO, Vec3::Y),
-            ..default()
-        },
+        Camera3d::default(),
+        Transform::from_xyz(5.0, 3.5, 11.0).looking_at(Vec3::ZERO, Vec3::Y),
         Name::new("Camera"),
     );
 
     let light = (
-        DirectionalLightBundle {
-            directional_light: DirectionalLight {
-                illuminance: 10000.0,
-                ..default()
-            },
-            transform: Transform {
-                rotation: Quat::from_rotation_x(-0.4),
-                ..default()
-            },
+        DirectionalLight {
+            illuminance: 10000.0,
             ..default()
         },
+        Transform::from_rotation(Quat::from_rotation_x(-0.4)),
         Name::new("Light"),
     );
 
     let ground = (
-        PbrBundle {
-            mesh: meshes.add(Plane3d::default().mesh().size(15.0, 15.0)),
-            material: materials.add(Color::srgb(0.3, 0.5, 0.3)),
-            ..default()
-        },
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(15.0, 15.0))),
+        MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
         Collider {
             cuboid: Vec3::new(15.0, 0.1, 15.0),
         },
@@ -69,15 +58,9 @@ fn spawn_player(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     commands.spawn((
-        PbrBundle {
-            mesh: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-            material: materials.add(StandardMaterial {
-                base_color: Color::BLACK,
-                ..default()
-            }),
-            transform: Transform::from_xyz(0.0, 0.5, 0.0),
-            ..default()
-        },
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(StandardMaterial::from_color(Color::BLACK))),
+        Transform::from_xyz(0.0, 0.5, 0.0),
         Collider {
             cuboid: Vec3::new(1.0, 1.0, 1.0),
         },
@@ -99,15 +82,9 @@ fn spawn_object(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     commands.spawn((
-        PbrBundle {
-            mesh: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-            material: materials.add(StandardMaterial {
-                base_color: Color::WHITE,
-                ..default()
-            }),
-            transform: Transform::from_xyz(0.0, 0.5, 5.0),
-            ..default()
-        },
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(StandardMaterial::from_color(Color::WHITE))),
+        Transform::from_xyz(0.0, 0.5, 5.0),
         Collider {
             cuboid: Vec3::new(1.0, 1.0, 1.0),
         },
@@ -117,15 +94,9 @@ fn spawn_object(
     ));
 
     commands.spawn((
-        PbrBundle {
-            mesh: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-            material: materials.add(StandardMaterial {
-                base_color: Color::WHITE,
-                ..default()
-            }),
-            transform: Transform::from_xyz(2.0, 1.0, 5.0),
-            ..default()
-        },
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(StandardMaterial::from_color(Color::WHITE))),
+        Transform::from_xyz(2.0, 1.0, 5.0),
         Collider {
             cuboid: Vec3::new(1.0, 1.0, 1.0),
         },
