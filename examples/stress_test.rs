@@ -82,14 +82,10 @@ fn movement(
     for (transform, mut rb) in q_rb.iter_mut() {
         let to_center = Vec3::ZERO - transform.translation;
 
-        // println!("To center: {:?}", to_center);
         if to_center.length_squared() > 1e-4 {
             let direction = to_center.normalize();
             rb.linear_velocity = direction * impulse_strength * delta_secs;
         }
-        // else {
-        //     rb.linear_velocity = Vec3::ZERO;
-        // }
     }
 }
 
